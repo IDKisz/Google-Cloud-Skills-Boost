@@ -1,3 +1,5 @@
+Perform Foundational Infrastructure Tasks in Google Cloud: Challenge Lab
+
 Link to lab path: https://www.cloudskillsboost.google/quests/118
 
 -----------------------------------------------------------
@@ -7,7 +9,7 @@ Task 1. Create a bucket
 2) Create Bucket
   - use name provide in instruction
   - use region=us-east1 and zone=us-east1-b
-  - other specyfications as default
+  - other specifications as default
 
 -----------------------------------------------------------
 Task 2. Create a Pub/Sub topic
@@ -22,7 +24,7 @@ Task 3. Create the thumbnail Cloud Function
 1) Navigation menu -> Cloud Function
 2) Create Function
   - use name provide in instruction
-  - set apropiate version od Node.js
+  - set correct version od Node.js
   - Entry point: thumbnail
   - Trigger: Cloud Storage
     - Event type: Finalize/Create

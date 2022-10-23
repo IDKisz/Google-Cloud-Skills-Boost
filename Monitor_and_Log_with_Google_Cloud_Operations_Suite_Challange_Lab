@@ -1,0 +1,58 @@
+Monitor and Log with Google Cloud Operations Suite
+
+Link to lab path: https://www.cloudskillsboost.google/quests/143
+
+-----------------------------------------------------------
+Task 1. Configure Cloud Monitoring
+-----------------------------------------------------------
+1) Navigation Menu -> Monitoring -> Dashboards
+2) Check Media_Dashboard
+
+-----------------------------------------------------------
+Task 2. Configure a Compute Instance to generate Custom Cloud Monitoring metrics
+-----------------------------------------------------------
+1) Navigation Menu -> VM Instances -> video-queue-monitor
+2) Check details, startup-script
+3) Stop video-queue-monitor -> edit
+4) In startup-script change: [REPLACE-WITH-PROJECT_ID], [REPLACE-WITH-INSTANCE-ID], [REPLACE-WITH-INSTANCE-ZONE] with correct data. Save and resume VM
+5) Navigation Menu -> Monitoring -> Metrics explorer
+6) Select a metric "input_queue_size" (VM Instance - Custom - OpenCensus/my.videoservice.org...) and Apply
+
+-----------------------------------------------------------
+Task 3. Create a custom metric using Cloud Operations logging events
+-----------------------------------------------------------
+1) Navigation Menu -> Logging -> Logs Explorer
+2) Check Show query and use:
+
+textPayload=~"file_format\: ([4,8]K).*"
+
+3) Run query
+4) Create a metric:
+  - Counter type
+  - name provide from lab (e.g. large_video_upload_rate)
+  - filter selection: textPayload=~"file_format\: ([4,8]K).*"
+
+-----------------------------------------------------------
+Task 4. Add custom metrics to the Media Dashboard in Cloud Operations Monitoring
+-----------------------------------------------------------
+1) Navigation Menu -> Monitoring -> Dashboards
+2) Media_Dashboard
+3) Edit dashboard
+4) Add chart:
+  - line type
+  - select a metric "input_queue_size" (VM Instance - Custom - OpenCensus/my.videoservice.org...) and Apply
+  - add filter: instance_id
+5) Save
+6) Add second chart:
+  - line type
+  - select a metric "large_video_upload_rate" (Interactive Metrics: VM Instance - Custom - logging/user/large_video_upload_rate) and Apply
+
+-----------------------------------------------------------
+Task 5. Create a Cloud Operations alert based on the rate of high resolution video file uploads
+-----------------------------------------------------------
+1) Navigation Menu -> Monitoring -> Alerting
+2) Create policy
+  - select a metric "large_video_upload_rate" (Interactive Metrics: VM Instance - Custom - logging/user/large_video_upload_rate) and Apply
+  - set threshold value trigger (provided by lab)
+  - alert name (provided by lab)
+  - create

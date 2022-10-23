@@ -1,0 +1,101 @@
+Create and Manage Cloud Resources: Challange Lab
+
+Link to lab path: https://www.cloudskillsboost.google/quests/120
+
+-----------------------------------------------------------
+Task 1. Create a project jumphost instance
+-----------------------------------------------------------
+
+1) Navigation menu -> Compute Engine -> VM Instance
+2) Create VM Instance
+  - use name provide in instruction (eg. nucleus-jumphost-893)
+  - use f1-micro machine type
+  - use image Debian Linux
+
+-----------------------------------------------------------
+Task 2. Create a Kubernetes service cluster
+-----------------------------------------------------------
+1) Open Google Console and set zone:
+gcloud config set compute/zone us-east1-b
+
+2) Create cluster (eg. name: nucleus-webserver-lab1)
+gcloud container clusters create nucleus-webserver-lab1
+
+3) Get cluster credentials
+gcloud container clusters get-credentials nucleus-webserver-lab1
+
+4) Use Docker container hello-app (gcr.io/google-samples/hello-app:2.0 <- or other provide by lab) as a placeholder
+kubectl create deployment hello-app --image=gcr.io/google-samples/hello-app:2.0
+
+5) Expose app on port provide by lab (e.g. 8083)
+kubectl expose deployment hello-app --type=LoadBalancer --port 8083
+
+6) Check is load balancer work
+kubectl get service
+
+-----------------------------------------------------------
+Task 3. Set up an HTTP load balancer
+-----------------------------------------------------------
+1) Use provide code in Google Console
+
+cat << EOF > startup.sh
+#! /bin/bash
+apt-get update
+apt-get install -y nginx
+service nginx start
+sed -i -- 's/nginx/Google Cloud Platform - '"\$HOSTNAME"'/' /var/www/html/index.nginx-debian.html
+EOF
+
+2) Create instance template (e.g. name: nucleus-template)
+gcloud compute instance-templates create nucleus-template \
+--metadata-from-file startup-script=startup.sh \
+--network nucleus-vpc \
+--machine-type g1-small \
+--region us-east1
+
+3) Create a target pool (e.g. name: nucleus-pool)
+gcloud compute target-pools create nucleus-pool
+
+4) Create a managed instance group (e.g. name: nucleus-group)
+gcloud compute instance-groups managed create nucleus-group \
+--base-instance-name nucleus \
+--size 2 \
+--template nucleus-template \
+--region us-east1
+
+--target-pool nucleus-pool gcloud compute instances list
+
+5) Create a firewall rule to allow traffic (80/tcp), use name provide in instruction (e.g. nucleus-fw)
+gcloud compute firewall-rules create nucleus-fw \
+          --allow tcp:80 \
+          --network nucleus-vpc
+
+6) Create a health check
+gcloud compute http-health-checks create http-basic-check
+gcloud compute instance-groups managed \
+          set-named-ports nucleus-group \
+          --named-ports http:80 \
+          --region us-east1
+
+7) Create a backend service, and attach the managed instance group with named port (http:80)
+gcloud compute backend-services create nucleus-backend \
+          --protocol HTTP \
+          --http-health-checks http-basic-check \
+          --global
+gcloud compute backend-services add-backend nucleus-backend \
+          --instance-group nucleus-group \
+          --instance-group-region us-east1 \
+          --global
+
+8) Create a URL map, and target the HTTP proxy to route requests to your URL map.
+gcloud compute url-maps create nucleus-web-map \
+--default-service nucleus-backend
+gcloud compute target-http-proxies create http-lb-proxy \
+--url-map nucleus-web-map
+
+9) Create a forwarding rule.
+gcloud compute forwarding-rules create http-content-rule \
+        --global \
+        --target-http-proxy http-lb-proxy \
+        --ports 80
+gcloud compute forwarding-rules list

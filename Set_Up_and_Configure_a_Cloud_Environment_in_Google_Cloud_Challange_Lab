@@ -1,0 +1,176 @@
+Set Up and Configure a Cloud Environment in Google Cloud
+
+Link to lab path: https://www.cloudskillsboost.google/quests/119
+
+-----------------------------------------------------------
+Task 1. Create a development VPC with subnets manually
+-----------------------------------------------------------
+
+1) Navigation Menu -> VPC Network
+2) Create VPC network
+  - name: griffin-dev-vpc
+  - region us-east1
+  - subnet1: griffin-dev-wp (IP adress block: 192.168.16.0/20)
+  - subnet2: griffin-dev-mgmt (IP adress block: 192.168.32.0/20)
+
+-----------------------------------------------------------
+Task 2. Create a production VPC with subnets manually
+-----------------------------------------------------------
+  - name: griffin-prod-vpc
+  - region us-east1
+  - subnet1: griffin-prod-wp (IP adress block: 192.168.48.0/20)
+  - subnet2: griffin-prod-mgmt (IP adress block: 192.168.64.0/20)
+
+Production VPC network
+
+gsutil cp -r gs://cloud-training/gsp321/dm .
+cd dm
+#Change SET_REGION to us-east1-b in prod-network.yaml
+gcloud deployment-manager deployments create griffin-prod --config prod-network.yaml
+
+-----------------------------------------------------------
+Task 3. Create a bastion that is connected to both VPCs
+-----------------------------------------------------------
+1) Navigation Menu -> Compute Engine -> VM Instance
+2) Create:
+  - name: griffin-dev-db
+  - region: us-east1
+  - Networking option
+    -> Network tags: bastion
+    -> Network interfaces: griffin-dev-mgmt, griffin-prod-mgmt
+
+or:
+gcloud compute instances create griffin-dev-db \
+--network-interface=network=griffin-dev-vpc,subnet=griffin-dev-mgmt \
+--network-interface=network=griffin-prod-vpc,subnet=griffin-prod-mgmt \
+--tags=bastion \
+--zone=us-east1-b \
+
+3) Navigation Menu -> VPC Network -> Firewall
+4) Create rule:
+  - name: griffin-bastion-dev-ssh
+  - network: griffin-dev-vpc
+  - targets: bastion
+  - source IP ranges: 192.168.32.0/20
+  - protocols and ports: tcp/22
+
+or:
+gcloud compute firewall-rules create griffin-bastion-dev-ssh \
+--source-ranges=0.0.0.0/0 \
+--target-tags bastion \
+--allow=tcp:22 \
+--network=griffin-dev-vpc
+
+5) Create rule:
+  - name: griffin-bastion-prod-ssh
+  - network: griffin-dev-vpc
+  - targets: bastion
+  - source IP ranges: 192.168.32.0/20
+  - protocols and ports: tcp/22
+
+or:
+gcloud compute firewall-rules create griffin-bastion-prod-ssh \
+-source-ranges=0.0.0.0/0
+--target-tags bastion \
+--allow=tcp:22 \
+--network=griffin-prod-vpc
+
+-----------------------------------------------------------
+Task 4. Create a development Cloud SQL Instance and connect and prepare the WordPress environment
+-----------------------------------------------------------
+1) Navigation Menu -> SQL -> Create Instance -> MySQL
+  - name: griffin-dev-db
+  - region: us-east1
+  - zone: us-east1-b
+  - password: e.g. project ID from lab
+
+or:
+gcloud sql instances create griffin-dev-db --root-password <password> --region=us-east1 --zone=us-east1-b
+
+2) Connect to instance using Cloud Shell:
+
+gcloud sql connect griffin-dev-db --user=root --quiet
+
+In SQL console use:
+
+CREATE DATABASE wordpress;
+CREATE USER "wp_user"@"%" IDENTIFIED BY "stormwind_rules";
+GRANT ALL PRIVILEGES ON wordpress.* TO "wp_user"@"%";
+FLUSH PRIVILEGES;
+
+exit
+
+-----------------------------------------------------------
+Task 5. Create a Kubernetes cluster in the development VPC for WordPress
+-----------------------------------------------------------
+1) Navigation Menu -> Kubernetes Engine -> Clusters
+2) Create:
+  - name: griffin-dev
+  - zone: us-east1-b
+  -> default-pool -> nodes:
+    - number of nodes: 2
+    - machine type: n1-standard-4
+  -> network:
+    - network: griffin-dev-vpc
+    - node subnet: griffin-dev-wp
+
+or:
+gcloud container clusters create griffin-dev \
+ --network griffin-dev-vpc \
+ --subnetwork griffin-dev-wp \
+ --machine-type n1-standard-4 \
+ --num-nodes 2 \
+ --zone us-east1-b
+gcloud container clusters get-credentials griffin-dev --zone us-east1-b
+
+-----------------------------------------------------------
+Task 6. Prepare the Kubernetes cluster for the WordPress environment
+-----------------------------------------------------------
+1) In Cloud Shell:
+gsutil cp -r gs://cloud-training/gsp321/wp-k8s .
+cd ~/wp-k8s
+edit wp-env.yaml
+
+Replace username_goes_here and password_goes_here to wp_user and stormwind_rules. Save.
+
+2) Deploy configuration to the cluster using
+kubectl apply -f wp-env.yaml
+
+3) Create key and add to the Kubernetes
+gcloud iam service-accounts keys create key.json \
+       --iam-account=cloud-sql-proxy@$GOOGLE_CLOUD_PROJECT.iam.gserviceaccount.com
+kubectl create secret generic cloudsql-instance-credentials \
+       --from-file key.json
+
+-----------------------------------------------------------
+Task 7. Create a WordPress deployment using the supplied configuration
+-----------------------------------------------------------
+1) In Cloud Shell:
+cd ~/wp-k8s
+edit wp-deployment.yaml
+
+Replace YOUR_SQL_INSTANCE with griffin-dev-db’s Instance connection name. Save.
+
+kubectl create -f wp-deployment.yaml
+kubectl create -f wp-service.yaml
+
+-----------------------------------------------------------
+Task 8. Enable monitoring of the cluster via stackdriver
+-----------------------------------------------------------
+1) Navigation Menu -> Kubernetes Engine -> Services and Ingress
+2) Copy Endpoint's address
+3) Navigation Menu -> Monitoring -> Uptime Checks
+4) Create:
+  - name: WordPress Uptime
+  - check type: HTTP
+  - resource type: URL
+  - hostname: <endpoint>
+  - path: /
+
+-----------------------------------------------------------
+Task 9. Provide access for an additional engineer
+-----------------------------------------------------------
+1) Navigation Menu -> IAM & Admin -> IAM
+2) +ADD
+  - new members: (copy second user)
+  - role: Project -> Editor
