@@ -1,0 +1,130 @@
+Deploy to Kubernetes in Google Cloud: Challenge Lab
+
+Link to lab path: https://www.cloudskillsboost.google/quests/116
+
+-----------------------------------------------------------
+Task 1. Create a Docker image and store the Dockerfile
+-----------------------------------------------------------
+1) Cloud shell:
+
+```source <(gsutil cat gs://cloud-training/gsp318/marking/setup_marking_v2.sh)```
+
+2) Use with correct project_ID
+
+```gcloud source repos clone valkyrie-app --project=project_ID```
+
+3) Create dockerfile with code:
+
+```FROM golang:1.10
+WORKDIR /go/src/app
+COPY source .
+RUN go install -v
+ENTRYPOINT ["app","-single=true","-port=8080"]```
+
+4) Create image (use name and tag provided by lab)
+
+```docker build -t valkyrie-app:v0.0.2 .
+
+5) Check progress
+
+```cd ..
+cd marking
+./step1_v2.sh```
+
+
+-----------------------------------------------------------
+Task 2. Test the created Docker image
+-----------------------------------------------------------
+1) Use:
+cd ~/valkyrie-app/
+
+2) Build container from image with provided ports:
+
+```docker run -p 8080:8080 valkyrie-app:v0.0.2```
+
+3)Check progress
+
+```cd ..
+cd marking
+./step2_v2.sh```
+
+-----------------------------------------------------------
+Task 3. Push the Docker image in the Container Repository
+-----------------------------------------------------------
+1) Use:
+cd ~/valkyrie-app/
+
+2) Push created (task 2) image to repository
+
+```docker tag valkyrie-app:v0.0.1 gcr.io/<project_ID>/valkyrie-app:v0.0.2
+docker push gcr.io/<project_ID>>/valkyrie-app:v0.0.2```
+
+-----------------------------------------------------------
+Task 4. Create and expose a deployment in Kubernetes
+-----------------------------------------------------------
+1) Go to valkyrie-app/k8s
+2) Get credentials
+
+```gcloud container clusters get-credentials valkyrie-dev -- zone us-east1-c```
+
+3) Change deployment.yaml: use correct path to docker image and project ID.
+4) Deploy deployment.yaml and service.yaml:
+
+```kubectl create -f k8s/deployment.yaml
+kubectl create -f k8s/service.yaml```
+
+
+-----------------------------------------------------------
+Task 5. Update the deployment with a new version of valkyrie-app
+-----------------------------------------------------------
+1) Increase the replicas from 1 to 3 (max value provided by lab):
+
+```kubectl scale deployment valkyrie-dev — replicas 3```
+
+2) Build and push the new version
+
+```docker build -t gcr.io/<project_ID>/>valkyrie-app:v0.0.3 .
+docker push gcr.io/<project_ID>/valkyrie-app:v0.0.3```
+
+3) Update version in deployment to new one
+
+```kubectl edit deployment valkyrie-dev```
+
+
+-----------------------------------------------------------
+Task 6. Create a pipeline in Jenkins to deploy your app
+-----------------------------------------------------------
+1) Get password for Jenkins
+
+```printf $(kubectl get secret cd-jenkins -o jsonpath="{.data.jenkins-admin-password}" | base64 --decode);echo```
+
+2) Kill all running containers
+docker ps
+docker kill <container_ID>
+
+3) Connect to Jenkins using:
+
+```export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/component=jenkins-master" -l "app.kubernetes.io/instance=cd" -o jsonpath="{.items[0].metadata.name}")
+kubectl port-forward $POD_NAME 8080:8080 >> /dev/null &```
+
+4) Log in to Jenkins
+5) Manage Credentials -> Global credentials
+6) Add Credentials:
+  - select google service account from metadata
+7) Create new job:
+  - new item
+  - name: valkyrie-app
+  - Multibranch Pipeline
+  - Branch Sources -> Add source -> git. Use repositories: https://source.developers.google.com/p/<project_ID>/r/valkyrie-app
+    credentials as qwiklabs
+8) Change Jenkinsfile:
+  - replace YOUR_PROJECT
+9) Change source/html.go from green to orange (two occurrences)
+10) Add config for git:
+
+```git config --global user.email "you@example_email..com"
+git config --global user.name "sample_name"
+git add .git push origin master```
+
+11) Trigger manually build in Jenkins:
+  Build Review -> Build button

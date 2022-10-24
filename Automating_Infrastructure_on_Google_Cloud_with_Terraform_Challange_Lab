@@ -1,0 +1,267 @@
+Automating Infrastructure on Google Cloud with Terraform
+
+Link to lab path: https://www.cloudskillsboost.google/quests/159
+
+-----------------------------------------------------------
+Task 1. Create the configuration files
+-----------------------------------------------------------
+1) Open Cloud Shell
+2) Use:
+
+```touch main.tf variables.tf
+mkdir -p modules/instances
+cd instances
+touch instances.tf outputs.tf variables.tf
+cd ..
+mkdir storage
+cd storage
+touch storage.tf outputs.tf variables.tf
+cd ..```
+
+3) Add code to variables.tf files:
+
+```variable "region" {
+ default = "us-east1"
+}
+
+variable "zone" {
+ default = "us-east1-c"
+}
+
+variable "project_id" {
+ default = "<PROJECT_ID>"
+}```
+
+4) Add code to main.tf:
+
+```terraform {
+  required_providers {
+    google = {
+      source = "hashicorp/google"
+      version = "3.55.0"
+    }
+  }
+}
+
+provider "google" {
+  project     = var.project_id
+  region      = var.region
+  zone        = var.zone
+}
+
+
+module "instances" {
+  source     = "./modules/instances"
+}```
+
+5) Terraform init in root directory
+
+
+-----------------------------------------------------------
+Task 2. Import infrastructure
+-----------------------------------------------------------
+1) cd modules/instances/instances.tf
+
+```resource "google_compute_instance" "tf-instance-1" {
+  name         = "tf-instance-1"
+  machine_type = "n1-standard-1"
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-10"
+    }
+  }
+
+  network_interface {
+ network = "default"
+  }
+
+metadata_startup_script = <<-EOT
+#!/bin/bash
+EOT
+
+allow_stopping_for_update = true
+}
+
+resource "google_compute_instance" "tf-instance-2" {
+  name         = "tf-instance-2"
+  machine_type = "n1-standard-1"
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-10"
+    }
+  }
+
+  network_interface {
+ network = "default"
+  }
+
+metadata_startup_script = <<-EOT
+#!/bin/bash
+EOT
+
+allow_stopping_for_update = true
+}```
+
+2) Import instance tf-instance-1 and tf-instance-2. ID from inspect each VM in Compute-Engine -> VM Instance
+
+```terraform import module.instances.google_compute_instance.tf-instance-1 <Instance1_ID>
+terraform import module.instances.google_compute_instance.tf-instance-1 <Instance2_ID>>```
+
+3) terraform plan
+4) terraform apply
+
+-----------------------------------------------------------
+Task 3. Configure a remote backend
+-----------------------------------------------------------
+1) Add to storage.tf (bucket name provided by lab)
+
+```resource "google_storage_bucket" "storage-bucket" {
+  name          = "<BUCKET_NAME>"
+  location      = "US"
+  force_destroy = true
+  uniform_bucket_level_access = true
+}
+```
+
+2) Add to main.tf
+
+```module "storage" {
+  source     = "./modules/storage"
+}```
+
+3) terraform init
+4) terraform apply
+5) Add remote backend to main.tf. Block should looks like below.
+
+```terraform {
+  backend "gcs" {
+    bucket  = "<PROJECT_ID>"
+ prefix  = "terraform/state"
+  }
+  required_providers {
+    google = {
+      source = "hashicorp/google"
+      version = "3.55.0"
+    }
+  }
+}```
+
+6) terraform init
+
+-----------------------------------------------------------
+Task 4. Modify and update infrastructure
+-----------------------------------------------------------
+1) Add third VM to instance.tf (use provided name)
+2) Change machine type for all machine to n1-standard-2. Code for third one should looks like:
+
+```resource "google_compute_instance" "<THIRD_INSTANCE_NAME>" {
+  name         = "<THIRD_INSTANCE_NAME>"
+  machine_type = "n1-standard-2"
+  zone         = "us-east1-c"
+  allow_stopping_for_update = true
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-10"
+    }
+  }
+
+  network_interface {
+ network = "default"
+  }
+}```
+
+3) terraform init
+4) terraform apply
+
+-----------------------------------------------------------
+Task 5. Taint and destroy resources
+-----------------------------------------------------------
+1) Taint the third VM instance:
+
+```terraform taint module.instances.google_compute_instance.<THIRD_INSTANCE>```
+
+2) terraform init
+3) terraform apply
+4) Delete block of code with third instance in instances.tf file
+5) terraform init
+6) terraform apply
+
+-----------------------------------------------------------
+Task 6. Use a module from the Registry
+-----------------------------------------------------------
+1) Add to main.tf:
+
+```module "vpc" {
+    source  = "terraform-google-modules/network/google"
+    version = "~> <number_provided_by_lab>"
+
+    project_id   = "<PROJECT_ID>"
+    network_name = "<NETWORK_NAME>"
+    routing_mode = "GLOBAL"
+
+    subnets = [
+        {
+            subnet_name           = "subnet-01"
+            subnet_ip             = "10.10.10.0/24"
+            subnet_region         = "us-east1"
+        },
+        {
+            subnet_name           = "subnet-02"
+            subnet_ip             = "10.10.20.0/24"
+            subnet_region         = "us-east1"
+            subnet_private_access = "true"
+            subnet_flow_logs      = "true"
+            description           = "This subnet has a description"
+        }
+    ]
+}```
+
+Use correct Number of version, Project ID and Network name.
+
+2) terraform init
+3) terraform apply
+4) Change code in modules/instances/instances.tf.
+Replace:
+
+```  network_interface {
+ network = "default"
+  }```
+
+For tf-instance-1:
+```  network_interface {
+ network = "<Network_name>"
+    subnetwork = "subnet-01"
+  }```
+For tf-instance-2:
+
+```  network_interface {
+ network = "<Network-name>"
+    subnetwork = "subnet-02"
+  }```
+
+5) terraform init
+6) terraform apply
+
+-----------------------------------------------------------
+Task 7. Configure a firewall
+-----------------------------------------------------------
+1) Add to main.tf:
+
+```resource "google_compute_firewall" "tf-firewall" {
+  name    = "tf-firewall"
+ network = "projects/<PROJECT_ID>/global/networks/<NETWORK_NAME>"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80"]
+  }
+
+  source_tags = ["web"]
+  source_ranges = ["0.0.0.0/0"]
+}```
+
+2) terraform init
+3) terraform apply
