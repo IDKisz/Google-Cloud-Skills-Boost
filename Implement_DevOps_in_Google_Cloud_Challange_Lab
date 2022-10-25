@@ -1,0 +1,128 @@
+Implement DevOps in Google Cloud: Challenge Lab
+
+Link to lab path: https://www.cloudskillsboost.google/quests/141
+
+-----------------------------------------------------------
+Task 1: Configure a Jenkins pipeline for continuous deployment to Kubernetes Engine
+-----------------------------------------------------------
+1) Set zone
+
+```gcloud config set compute/zone us-east1-d```
+
+2) Clone repo
+
+```git clone https://source.developers.google.com/p/<PROJECT_ID>/r/sample-app```
+
+3) Get credential for cluster
+
+```gcloud container clusters get-credentials jenkins-cd```
+
+4) Install Helm
+
+```helm repo add stable https://kubernetes-charts.storage.googleapis.com/
+helm repo update```
+
+5) Clone lab's sample code
+
+```git clone https://github.com/GoogleCloudPlatform/continuous-deployment-on-kubernetes.git```
+
+6) Configure and install Jenkins
+
+```cd continuous-deployment-on-kubernetes/
+helm install cd stable/jenkins -f jenkins/values.yaml --version 1.2.2 --wait```
+
+Check is Jenkins is ready ( kubectl get pods )
+
+7) Setup port forwarding to the Jenkins UI
+
+```export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/component=jenkins-master" -l "app.kubernetes.io/instance=cd" -o jsonpath="{.items[0].metadata.name}")kubectl port-forward $POD_NAME 8080:8080 >> /dev/null &```
+
+Check is service is correct ( kubectl get svc )
+
+8) Connect to Jenkins
+
+```printf $(kubectl get secret cd-jenkins -o jsonpath="{.data.jenkins-admin-password}" | base64 --decode);echo```
+
+Click Preview on port 8080 and log in.
+
+9) Deploy application (create namespace and deployments)
+
+```cd sample-app
+kubectl create ns production
+kubectl apply -f k8s/production -n production
+kubectl apply -f k8s/canary -n production
+kubectl apply -f k8s/services -n production```
+
+10) Check external IP
+
+```kubectl get service gceme-frontend -n production```
+
+11) Prepare git repository
+
+```git init
+git config credential.helper gcloud.sh
+git remote add origin https://source.developers.google.com/p/<PROJECT_ID>/r/default
+git config --global user.email "example@email.net"
+git config --global user.name "name"
+git add .git commit -m "Initial commit"
+git push origin master
+```
+
+12) Log in to Jenkins
+13) Manage Credentials -> Global credentials
+14) Add Credentials:
+  - select google service account from metadata
+15) Create new job:
+  - new item
+  - name: sample-app
+  - Multibranch Pipeline
+  - Branch Sources -> Add source -> git. Use repositories: https://source.developers.google.com/p/<project_ID>/r/sample-app
+    credentials as qwiklabs
+  - scan multibranch pipeline triggers: check the Periodically if not otherwise run box and set the Interval value to 1 minute
+
+-----------------------------------------------------------
+Task 2: Push an update to the application to a development branch
+-----------------------------------------------------------
+1) New development branch
+
+```git checkout -b new-feature```
+
+2) Change html.go: colour blue to orange (or other provided), two occurrences
+3) Change main.go: version (provided)
+4) Commit changes
+
+```git add Jenkinsfile html.go main.go
+git commit -m "Version 2.0.0"
+git push origin new-feature```
+
+-----------------------------------------------------------
+Task 3: Push a Canary deployment to the production namespace
+-----------------------------------------------------------
+1) Create new branch
+
+```git checkout -b canary```
+
+2) Merge
+
+```git merge new-feature```
+
+3) Push
+
+```git push origin canary```
+
+
+-----------------------------------------------------------
+Task 4: Promote the Canary Deployment to production
+-----------------------------------------------------------
+1) Merge
+
+```git checkout master
+git merge canary```
+
+2) Push
+
+```git push origin master```
+
+3) Check
+
+```export FRONTEND_SERVICE_IP=$(kubectl get -o \ jsonpath="{.status.loadBalancer.ingress[0].ip}" --namespace=production services gceme-frontend)```
